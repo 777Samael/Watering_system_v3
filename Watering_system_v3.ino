@@ -22,10 +22,10 @@ bool PM = false;
 int moistureSensorPin = 0;    // Moisture sensor analog pin
 int moistureRead      = 0;    // Raw moisture value from analog pin
 int moistMappedValue  = 0;    // Moisture value after calculation from read pin
-int maxADC            = 615;  // Replace with min ADC value read in air
-int minADC            = 140;  // Replace with max ADC value read fully submerged in water
-int moistureMax       = 85    // Maximum value for soil moisture
-int moistureMin       = 60    // Minimum value for soil moisture
+int moistureMaxADC    = 615;  // Replace with min ADC value read in air
+int moistureMinADC    = 140;  // Replace with max ADC value read fully submerged in water
+int moistureMaxPrc    = 85    // Maximum value for soil moisture
+int moistureMinPrc    = 60    // Minimum value for soil moisture
 
 // LCD with I2C module
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
@@ -128,7 +128,7 @@ void loop() {
 
   // Moisrute read
   moistureRead      = analogRead(moistureSensorPin);
-  moistMappedValue  = map(moistureRead,maxADC,minADC, 0, 100);
+  moistMappedValue  = map(moistureRead,moistureMaxADC,moistureMinADC, 0, 100);
 
   // LCD button read
   lcdButtonFlag = digitalRead(lcdButtonPin);
