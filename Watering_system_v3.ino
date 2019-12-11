@@ -1,6 +1,5 @@
 /*
  *  TO DO LATER
- *   soil humidity
  *   save logs to SD card
  *   connect via WiFi
 */
@@ -22,10 +21,10 @@ bool PM = false;
 int moistureSensorPin = 0;    // Moisture sensor analog pin
 int moistureRead      = 0;    // Raw moisture value from analog pin
 int moistMappedValue  = 0;    // Moisture value after calculation from read pin
-int moistureMaxADC    = 615;  // Replace with min ADC value read in air
+int moistureMaxADC    = 615;  // Replace with min ADC value read in the air
 int moistureMinADC    = 140;  // Replace with max ADC value read fully submerged in water
-int moistureMaxPrc    = 85    // Maximum value for soil moisture
-int moistureMinPrc    = 60    // Minimum value for soil moisture
+int moistureMaxPrc    = 85;   // The maximum value for soil moisture
+int moistureMinPrc    = 60;   // The minimum value for soil moisture
 
 // LCD with I2C module
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
@@ -126,14 +125,14 @@ void loop() {
   int minuteNow     = RTC.getMinute();        // current minute from real time clock
   int secondNow     = RTC.getSecond();        // current second from real time clock
 
-  // Moisrute read
+// Moisture read
   moistureRead      = analogRead(moistureSensorPin);
   moistMappedValue  = map(moistureRead,moistureMaxADC,moistureMinADC, 0, 100);
 
-  // LCD button read
+// LCD button read
   lcdButtonFlag = digitalRead(lcdButtonPin);
   
-  // Current date and time to display on lcd
+// Current date and time to display on lcd
   String dateNowLCD = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
   String timeNowLCD = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
 
@@ -155,7 +154,7 @@ void loop() {
   Serial.println(secondNow);
   delay(5000);*/
 
-  // Start custom watering
+// Start custom watering
   if (waterButtonFlag && waterNow){
     
     delay(250);
@@ -176,7 +175,7 @@ void loop() {
     //Serial.println("The button is pressed, the water pump is working.");
   }
 
-  // Stop custom watering
+// Stop custom watering
   if (waterButtonFlag == 0 && waterNow){
     
     digitalWrite(waterPumpPin,HIGH);
@@ -190,7 +189,8 @@ void loop() {
     //Serial.println("The button has been released, the water pump stopped working.");
   }
 
-  if (waterButtonFlag == 0 && checkTimeFlag){
+// Start validations before scheduled watering
+  if (waterButtonFlag == 0 && checkTimeFlag && moistMappedValue > moistureMinPrc && moistMappedValue < moistureMaxPrc){
     
     if (yearNow < 50) {   // Check if read datetime is not 1/1/1960
 
@@ -203,13 +203,12 @@ void loop() {
         //Serial.println("Looping through event schedule.");
 
         if (wDayNow == event.WeekDay){
-
           //Serial.println("Weekday matches the schedule element.");
           
-      // Watering
           if (hourNow == event.Hour && minuteNow == event.Min /*&& secondNow == event.Sec*/){
-
-            // Serial.println("Hour and minute matches the schedule element. Watering...");
+            // Serial.println("Hour and minute match the schedule element. Watering...");
+            
+// Watering BEGIN
   
             digitalWrite(waterPumpPin,LOW);
             digitalWrite(wateringLED,HIGH);
@@ -223,10 +222,9 @@ void loop() {
 
             dateWaterScheduleLCD = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
             timeWaterScheduleLCD = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
-  
             //Serial.println("Watering finished.");
 
-            delay(60000);   // Delay not to fall into the same loop for the second time.
+            delay(60000);   // Delay not to fall into the same loop (scheduled minute) for the second time.
           }
         }
       }
@@ -242,7 +240,7 @@ void loop() {
     }
   }
 
-// Turn on lcd and display all data
+// Turn on LCD and display all data
 
   if (lcdButtonFlag == LOW) {
 
@@ -257,6 +255,7 @@ void loop() {
   lcd.print("Watering system");
   delay(3000);
 
+  // Current date and time
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Current DateTime");
@@ -268,7 +267,16 @@ void loop() {
   lcd.setCursor(0,1);
   lcd.print(timeNowLCD);
   delay(3000);
-  
+
+  // Soil moisture level
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Moisture level");
+  lcd.setCursor(0,1);
+  lcd.print(moistMappedValue);
+  lcd.print(" %");
+  delay(3000);
+
   // Last watering datetime
   lcd.clear();
   lcd.setCursor(0,0);
@@ -331,7 +339,7 @@ void ledBlink(int pinLED, int blinkCount, int intervalTime) {
   }
 }
 
-String get2digits(int number) { // return number lower that 10 as string with 0 as prefix
+String get2digits(int number) { // return number lower than 10 as a string with 0 as a prefix
   String str;
   if (number >= 0 && number < 10) {
     str = "0" + String(number);
