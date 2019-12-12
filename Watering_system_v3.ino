@@ -1,5 +1,7 @@
 /*
  *  TO DO LATER
+ *  indywidualnie podlewane donice z ręcznego odpalenia (menu lub każde uruchomienie przełącza 
+    zmienną numeru pomki na kolejną
  *   save logs to SD card
  *   connect via WiFi
 */
@@ -17,14 +19,13 @@ bool Century = false;
 bool h12 = false;
 bool PM = false;
 
-// Moisture sensor
-int moistureSensorPin = 0;    // Moisture sensor analog pin
-int moistureRead      = 0;    // Raw moisture value from analog pin
-int moistMappedValue  = 0;    // Moisture value after calculation from read pin
-int moistureMaxADC    = 615;  // Replace with min ADC value read in the air
-int moistureMinADC    = 140;  // Replace with max ADC value read fully submerged in water
-int moistureMaxPrc    = 85;   // The maximum value for soil moisture
-int moistureMinPrc    = 60;   // The minimum value for soil moisture
+// Moisture sensors
+int moistSensorPin[4]   = {A0,A1,A2,A3}; // Moisture sensors analog pins A0 to A3
+int moistRead[4]        = {0,0,0,0};     // Raw moisture values from analog pins A0 to A3
+int moistMappedValue[4] = {0,0,0,0};     // Moisture values after calculation
+int moistMaxADC    = 615;  // Replace with min ADC value read in the air
+int moistMinADC    = 140;  // Replace with max ADC value read fully submerged in water
+int moistMaxPrc    = 60;   // The maximum value for soil moisture
 
 // LCD with I2C module
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
@@ -34,35 +35,45 @@ class plannedEvent{
   plannedEvent(const char* value);
   int Hour, Min, Sec;
   int WeekDay;
+  int Planter;
   int WateringTime;
 };
 
 // Watering schedule
 plannedEvent::plannedEvent(const char* value)
 {
-  sscanf(value, "%d %d %d %d %i", &WeekDay, &Hour, &Min, &Sec, &WateringTime);
+  sscanf(value, "%d %d %d %d %d %i", &WeekDay, &Hour, &Min, &Sec, &Planter, &WateringTime);
 }
 //Length -> 10 is the seconds
 // 1 is Sunday
 plannedEvent schedule[]={
-  plannedEvent("1 21 00 00 1200"),
-  plannedEvent("2 21 00 00 1200"),
-  plannedEvent("3 21 00 00 1200"),
-  plannedEvent("4 21 00 00 1200"),
-  plannedEvent("5 21 00 00 1200"),
-  plannedEvent("6 21 00 00 1200"),
-  plannedEvent("7 21 00 00 1200")
+  plannedEvent("1 21 00 00 01 1200"),
+  plannedEvent("2 21 00 00 01 1200"),
+  plannedEvent("3 21 00 00 01 1200"),
+  plannedEvent("4 21 00 00 01 1200"),
+  plannedEvent("5 21 00 00 01 1200"),
+  plannedEvent("6 21 00 00 01 1200"),
+  plannedEvent("7 21 00 00 01 1200"),
+  plannedEvent("1 21 00 00 02 600"),
+  plannedEvent("2 21 00 00 02 600"),
+  plannedEvent("3 21 00 00 02 600"),
+  plannedEvent("4 21 00 00 02 600"),
+  plannedEvent("5 21 00 00 02 600"),
+  plannedEvent("6 21 00 00 02 600"),
+  plannedEvent("7 21 00 00 02 600")
   };
 
-int eventCount = 7;
+int eventCount = 14;
+int largePlanter = 1;
+int smallPlanter = 2;
 
 // I/O pins
-int waterButtonPin  = 2;    // On/Off pin for custom watering
-int lcdButtonPin    = 3;    // Turn on LCD and display all the necessary data
-int timeErrorLED    = 4;    // LED pin for read time error - RED
-int wateringLED     = 5;    // watering is ON, - BLUE
-int chargingLED     = 6;    // LED pin for charging indicator - GREEN
-int waterPumpPin    = 7;    // Water pump relay pin
+int waterButtonPin  = 2;          // On/Off pin for custom watering
+int lcdButtonPin    = 3;          // Turn on LCD and display all the necessary data
+int timeErrorLED    = 4;          // LED pin for read time error - RED
+int wateringLED     = 5;          // watering is ON, - BLUE
+int chargingLED     = 6;          // LED pin for charging indicator - GREEN
+int waterPumpPin[4] = {7,8,9,10}; // Water pumps relays pin
 
 // Variables for custom watering using the buttons
 volatile int waterButtonFlag  = 0;      // watering button clicked indicator
@@ -126,8 +137,10 @@ void loop() {
   int secondNow     = RTC.getSecond();        // current second from real time clock
 
 // Moisture read
-  moistureRead      = analogRead(moistureSensorPin);
-  moistMappedValue  = map(moistureRead,moistureMaxADC,moistureMinADC, 0, 100);
+  for(byte i = 0; i < 4; i++) {
+    moistRead[i]        = analogRead(moistSensorPin[i]);
+    moistMappedValue[i] = map(moistRead[i],moistMaxADC,moistMinADC, 0, 100);
+  }
 
 // LCD button read
   lcdButtonFlag = digitalRead(lcdButtonPin);
@@ -190,7 +203,7 @@ void loop() {
   }
 
 // Start validations before scheduled watering
-  if (waterButtonFlag == 0 && checkTimeFlag && moistMappedValue > moistureMinPrc && moistMappedValue < moistureMaxPrc){
+  if (waterButtonFlag == 0 && checkTimeFlag){
     
     if (yearNow < 50) {   // Check if read datetime is not 1/1/1960
 
@@ -209,16 +222,44 @@ void loop() {
             // Serial.println("Hour and minute match the schedule element. Watering...");
             
 // Watering BEGIN
-  
-            digitalWrite(waterPumpPin,LOW);
-            digitalWrite(wateringLED,HIGH);
-            
-            for (int i = 0; i < 100; i++) {
-              delay(event.WateringTime);
+
+            if(event.Planter = largePlanter) {
+
+              for(byte i = 0; i < 2; i++) {
+
+                if(moistMappedValue[i] < moistMaxPrc) {
+
+                  digitalWrite(waterPumpPin[i],LOW);
+                  digitalWrite(wateringLED,HIGH);
+                  
+                  for (int i = 0; i < 100; i++) {
+                    delay(event.WateringTime);
+                  }
+        
+                  digitalWrite(waterPumpPin[i],HIGH);
+                  digitalWrite(wateringLED,LOW);
+                }
+              }
             }
-  
-            digitalWrite(waterPumpPin,HIGH);
-            digitalWrite(wateringLED,LOW);
+
+            if(event.Planter = smallPlanter) {
+
+              for(byte i = 2; i < 4; i++) {
+
+                if(moistMappedValue[i] < moistMaxPrc) {
+
+                  digitalWrite(waterPumpPin[i],LOW);
+                  digitalWrite(wateringLED,HIGH);
+                  
+                  for (int i = 0; i < 100; i++) {
+                    delay(event.WateringTime);
+                  }
+        
+                  digitalWrite(waterPumpPin[i],HIGH);
+                  digitalWrite(wateringLED,LOW);
+                }
+              }
+            }
 
             dateWaterScheduleLCD = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
             timeWaterScheduleLCD = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
@@ -269,13 +310,18 @@ void loop() {
   delay(3000);
 
   // Soil moisture level
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Moisture level");
-  lcd.setCursor(0,1);
-  lcd.print(moistMappedValue);
-  lcd.print(" %");
-  delay(3000);
+  for(int i = 0; i < 4; i++) {
+
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Moisture level");
+    lcd.setCursor(0,1);
+    lcd.print(i);
+    lcd.print(" - ");
+    lcd.print(moistMappedValue[i]);
+    lcd.print(" %");
+    delay(3000);
+  }
 
   // Last watering datetime
   lcd.clear();
