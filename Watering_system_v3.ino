@@ -3,7 +3,7 @@
  *  indywidualnie podlewane donice z ręcznego odpalenia (menu lub każde uruchomienie przełącza 
     zmienną numeru pomki na kolejną
  *   save logs to SD card
- *   connect via WiFi
+ *   humidity sensor
 */
 
 #include <Wire.h>
@@ -11,6 +11,8 @@
 #include <DS3231.h>
 #include <LiquidCrystal_I2C.h>
 #include <TimerOne.h>
+#include <SPI.h>
+#include <SD.h>
 
 // Real Time Clock DS3231
 DS3231 RTC;
