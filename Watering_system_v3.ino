@@ -16,10 +16,12 @@
 
 // Real Time Clock DS3231
 DS3231 RTC;
-//DateTime RTC2;
 bool Century = false;
 bool h12 = false;
 bool PM = false;
+
+// LCD with I2C module
+LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 
 // Moisture sensors
 int moistSensorPin[4]   = {A0,A1,A2,A3}; // Moisture sensors analog pins A0 to A3
@@ -29,8 +31,13 @@ int moistMaxADC    = 615;  // Replace with min ADC value read in the air
 int moistMinADC    = 140;  // Replace with max ADC value read fully submerged in water
 int moistMaxPrc    = 60;   // The maximum value for soil moisture
 
-// LCD with I2C module
-LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+// Humidity sensor
+int DHTPIN = 9;
+
+// microSD card reader
+boolean dataSaved = false;
+int sdCardPin     = 10;
+File logfile;
 
 class plannedEvent{
   public:
@@ -75,7 +82,7 @@ int lcdButtonPin    = 3;          // Turn on LCD and display all the necessary d
 int timeErrorLED    = 4;          // LED pin for read time error - RED
 int wateringLED     = 5;          // watering is ON, - BLUE
 int chargingLED     = 6;          // LED pin for charging indicator - GREEN
-int waterPumpPin[4] = {7,8,9,10}; // Water pumps relays pin
+int waterPumpPin[4] = {7,8,A4,A5}; // Water pumps relays pin
 
 // Variables for custom watering using the buttons
 volatile int waterButtonFlag  = 0;      // watering button clicked indicator
@@ -121,6 +128,21 @@ void setup() {
   // Water pump relay pin
   pinMode(waterPumpPin,OUTPUT);
   digitalWrite(waterPumpPin, HIGH);
+
+  // microSD card reader
+  pinMode(sdCardPin, OUTPUT); //Pin for writing to SD card
+
+  char filename[] = "LOGFILE01.CSV";
+  for (uint8_t i = 0; i < 100; i++) {
+    filename[6] = i/10 + '0';
+    filename[7] = i%10 + '0';
+    if (! SD.exists(filename)) {              // only open a new file if it doesn't exist
+      logfile = SD.open(filename, FILE_WRITE); 
+      break;                                  // leave the loop
+    }
+  }
+
+  logfile.println("Date,Time,Moisture 1, Moisture 2, Moisture 3, Moisture 4, Air Temp (C),Relative Humidity (%),Watering");   //HEADER 
   
   // Initialize interruptions
   Timer1.initialize(1000000);
@@ -281,6 +303,25 @@ void loop() {
         //Serial.println("The DS3231 is stopped.  Please run the SetTime or check the circuitry.");
       }
     }
+  }
+
+// Save data to file
+
+  if(minuteNow%10 == 0 && dataSaved == false) {
+
+    logfile.print(dateNowLCD);
+    logfile.print(",");
+    logfile.print(timeNowLCD);
+    logfile.print(",");
+
+    for(int i = 0; i < 4; i++) {
+
+      logfile.print(moistMappedValue[i]);
+    }
+    dataSaved = true;
+  } else if (minuteNow%10 != 0 && dataSaved == true) {
+    
+    dataSaved = false;
   }
 
 // Turn on LCD and display all data
