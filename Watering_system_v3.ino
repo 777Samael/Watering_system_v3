@@ -1,9 +1,6 @@
 /*
  *  TO DO LATER
- *  indywidualnie podlewane donice z ręcznego odpalenia (menu lub każde uruchomienie przełącza 
-    zmienną numeru pomki na kolejną
- *   save logs to SD card
- *   humidity sensor
+ *   save logs to SD card - custom watering show waterings only once, without duplicates. Variables previous date/time of watering
 */
 
 #include <Wire.h>
@@ -13,6 +10,7 @@
 #include <TimerOne.h>
 #include <SPI.h>
 #include <SD.h>
+#include <DHT.h>
 
 // Real Time Clock DS3231
 DS3231 RTC;
@@ -32,7 +30,11 @@ int moistMinADC    = 140;  // Replace with max ADC value read fully submerged in
 int moistMaxPrc    = 60;   // The maximum value for soil moisture
 
 // Humidity sensor
-int DHTPIN = 9;
+int DHTPIN = 15;
+float humidityValue = 0.0;
+float tempValue     = 0.0;
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE); // Initialize DHT sensor for normal 16mhz Arduino
 
 // microSD card reader
 boolean dataSaved = false;
@@ -77,31 +79,34 @@ int largePlanter = 1;
 int smallPlanter = 2;
 
 // I/O pins
-int waterButtonPin  = 2;          // On/Off pin for custom watering
-int lcdButtonPin    = 3;          // Turn on LCD and display all the necessary data
-int timeErrorLED    = 4;          // LED pin for read time error - RED
-int wateringLED     = 5;          // watering is ON, - BLUE
-int chargingLED     = 6;          // LED pin for charging indicator - GREEN
-int waterPumpPin[4] = {7,8,A4,A5}; // Water pumps relays pin
+int waterButtonPin      = 2;              // On/Off pin for custom watering
+int lcdButtonPin        = 3;              // Turn on LCD and display all the necessary data
+int timeErrorLED        = 4;              // LED pin for read time error - RED
+int wateringLED         = 5;              // watering is ON, - BLUE
+int chargingLED         = 6;              // LED pin for charging indicator - GREEN
+int waterPumpPin[4]     = {7,8,9,10};     // Water pumps relays pin
+int selectedPumpPin[4]  = {11,12,13,14};  // Selected water pump for custom watering
 
 // Variables for custom watering using the buttons
 volatile int waterButtonFlag  = 0;      // watering button clicked indicator
 volatile bool waterNow        = false;  // water pump activation indicator
 volatile int checkTimeFlag    = 0;      // flag for time interval interruptions
+int currentPunpUsed           = 0;      // counter of watering pumps, each watering button click triggers next pump
 
 // Variables for displaying data using the button
 int lcdButtonFlag = 1;
 String dateWaterScheduleLCD;
 String timeWaterScheduleLCD;
-String dateWaterCustomLCD;
-String timeWaterCustomLCD;
-bool customWatered      = false;
-bool wateringStarted    = false;
-int wateringStartDay    = 0;
-int wateringStartHour   = 0;
-int wateringStartMinute = 0;
-int wateringStartSecond = 0;
-long wateringDuration   = 0;
+String dateWaterCustomLCD[4];
+String timeWaterCustomLCD[4];
+bool customWateredCheck     = false;
+bool customWatered[4]       = {false,false,false,false};
+bool wateringStarted[4]     = {false,false,false,false};
+int wateringStartDay[4]     = {0,0,0,0};
+int wateringStartHour[4]    = {0,0,0,0};
+int wateringStartMinute[4]  = {0,0,0,0};
+int wateringStartSecond[4]  = {0,0,0,0};
+long wateringDuration[4]    = {0,0,0,0};
 
 void setup() {
 
@@ -110,6 +115,9 @@ void setup() {
   Serial.begin(9600); // Start the serial interface
   lcd.begin(16,2);    // Init the LCD 2x16
   lcd.noBacklight();  // turn off backlight
+
+// Starting humidity sensor
+  dht.begin();
 
 // Setting up pins
 
@@ -142,7 +150,7 @@ void setup() {
     }
   }
 
-  logfile.println("Date,Time,Moisture 1, Moisture 2, Moisture 3, Moisture 4, Air Temp (C),Relative Humidity (%),Watering");   //HEADER 
+  logfile.println("Date,Time,Moisture 1,Moisture 2,Moisture 3,Moisture 4,Air Temp (C),Relative Humidity (%),Water Pump 1,Custom Date 1,Duration 1,Water Pump 2,Custom Date 2,Duration 2,Water Pump 3,Custom Date 3,Duration 3,Water Pump 4,Custom Date 4,Duration 4");   //HEADER 
   
   // Initialize interruptions
   Timer1.initialize(1000000);
@@ -193,35 +201,50 @@ void loop() {
 
 // Start custom watering
   if (waterButtonFlag && waterNow){
-    
-    delay(250);
-    digitalWrite(waterPumpPin,LOW);
+
     digitalWrite(wateringLED,HIGH);
-    customWatered = true;
-    
-    if(!wateringStarted) {
-      wateringStarted     = true;
-      wateringDuration    = 0;
-      wateringStartDay    = dayNow;
-      wateringStartHour   = hourNow;
-      wateringStartMinute = minuteNow;
-      wateringStartSecond = secondNow;
-      dateWaterCustomLCD  = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
-      timeWaterCustomLCD  = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
+    customWateredCheck = true;
+    delay(250);
+
+    for(int i = 0; i < 4; i++) {
+
+      if(digitalRead(selectedPumpPin[i])== LOW) {
+
+        digitalWrite(waterPumpPin[i],LOW);
+
+        if(!wateringStarted[i]) {
+          wateringStarted[i]     = true;
+          wateringDuration[i]    = 0;
+          wateringStartDay[i]    = dayNow;
+          wateringStartHour[i]   = hourNow;
+          wateringStartMinute[i] = minuteNow;
+          wateringStartSecond[i] = secondNow;
+          dateWaterCustomLCD[i]  = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+          timeWaterCustomLCD[i]  = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
+          customWatered[i] = true;
+        }
+      }
     }
     //Serial.println("The button is pressed, the water pump is working.");
   }
 
 // Stop custom watering
   if (waterButtonFlag == 0 && waterNow){
-    
-    digitalWrite(waterPumpPin,HIGH);
+
     digitalWrite(wateringLED,LOW);
     waterNow = false;
-    
-    if (customWatered) {
-      wateringDuration  = duration(wateringStartDay, wateringStartHour, wateringStartMinute, wateringStartSecond);
-      wateringStarted   = false;
+
+    for(int i = 0; i < 4; i++) {
+
+      if(digitalRead(selectedPumpPin[i])== LOW) {
+
+        digitalWrite(waterPumpPin[i],HIGH);
+
+        if (customWatered[i]) {
+          wateringDuration[i]  = duration(wateringStartDay[i], wateringStartHour[i], wateringStartMinute[i], wateringStartSecond[i]);
+          wateringStarted[i]   = false;
+        }
+      }
     }
     //Serial.println("The button has been released, the water pump stopped working.");
   }
@@ -309,16 +332,53 @@ void loop() {
 
   if(minuteNow%10 == 0 && dataSaved == false) {
 
+    // Date and time
     logfile.print(dateNowLCD);
     logfile.print(",");
     logfile.print(timeNowLCD);
     logfile.print(",");
 
+    // Moisture
     for(int i = 0; i < 4; i++) {
 
       logfile.print(moistMappedValue[i]);
+      logfile.print(",");
     }
+
+    // Air temp and relative Humidity
+    if (isnan(humidityValue) || isnan(tempValue)) {
+    
+      tempValue = dht.readTemperature();
+      logfile.print(tempValue);
+      logfile.print(",");
+  
+      humidityValue = dht.readHumidity();
+      logfile.print(humidityValue);
+      logfile.print("%,");
+    }
+
+    // Water pumps
+    if (customWateredCheck) {
+  
+      for(int i = 0; i < 4; i++) {
+
+        logfile.print(i);
+        logfile.print(",");
+        logfile.print(dateWaterCustomLCD[i]);
+        logfile.print(" ");
+        logfile.print(timeWaterCustomLCD[i]);
+        logfile.print(",");
+        logfile.print(get2digits(round(wateringDuration[i] / 60)));
+        logfile.print(":");
+        logfile.print(get2digits(wateringDuration[i] % 60));
+      }
+    }
+
+
+    
     dataSaved = true;
+    logfile.println();
+    logfile.flush();
   } else if (minuteNow%10 != 0 && dataSaved == true) {
     
     dataSaved = false;
@@ -366,35 +426,56 @@ void loop() {
     delay(3000);
   }
 
+  // Air temp and relative Humidity
+  if (isnan(humidityValue) || isnan(tempValue)) {
+
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Temp: ");
+    lcd.print(tempValue);
+    lcd.print(" *C");
+
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("RH: ");
+    lcd.print(humidityValue);
+    lcd.print(" %");
+  }
+
   // Last watering datetime
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Last watering");
   delay(2000);
 
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Custom");
-  lcd.setCursor(0,1);
-  lcd.print("Date and Time");
-  delay(2000);
-  
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print(dateWaterCustomLCD);
-  lcd.setCursor(0,1);
-  lcd.print(timeWaterCustomLCD);
-  delay(2000);
+  if (customWateredCheck) {
 
-  if (customWatered) {
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("Duration");
+    lcd.print("Custom");
     lcd.setCursor(0,1);
-    lcd.print(get2digits(round(wateringDuration / 60)));
-    lcd.print(":");
-    lcd.print(get2digits(wateringDuration % 60));
-    delay(3000);
+    lcd.print("Date and Time");
+    delay(2000);
+
+    for(int i = 0; i < 4; i++) {
+      
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print(dateWaterCustomLCD[i]);
+      lcd.setCursor(0,1);
+      lcd.print(timeWaterCustomLCD[i]);
+      delay(2000);
+
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("Duration pump");
+      lcd.print(i);
+      lcd.setCursor(0,1);
+      lcd.print(get2digits(round(wateringDuration[i] / 60)));
+      lcd.print(":");
+      lcd.print(get2digits(wateringDuration[i] % 60));
+      delay(3000);
+    }
   }
   
   lcd.clear();
