@@ -74,9 +74,9 @@ plannedEvent schedule[]={
   plannedEvent("7 21 00 00 02 600")
   };
 
-int eventCount = 14;
-int largePlanter = 1;
-int smallPlanter = 2;
+int eventCount    = 14;
+int largePlanter  = 1;
+int smallPlanter  = 2;
 
 // I/O pins
 int waterButtonPin      = 2;              // On/Off pin for custom watering
