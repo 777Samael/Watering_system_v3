@@ -39,6 +39,7 @@ DHT dht(DHTPIN, DHTTYPE); // Initialize DHT sensor for normal 16mhz Arduino
 // microSD card reader - PINS for Mega2560 MISO-50, MOSI-51, SCK-52, SS-53
 boolean dataSaved = false;
 int sdCardPin     = 53;
+String filename   = "data.csv";
 File logfile;
 
 class plannedEvent{
@@ -59,14 +60,14 @@ plannedEvent::plannedEvent(const char* value)
 // 1 is Sunday
 plannedEvent schedule[]={
   plannedEvent("1 21 00 00 01 1200"),
-  plannedEvent("2 21 00 00 01 1200"),
+  plannedEvent("2 01 08 00 01 100"),
   plannedEvent("3 21 00 00 01 1200"),
   plannedEvent("4 21 00 00 01 1200"),
   plannedEvent("5 21 00 00 01 1200"),
   plannedEvent("6 21 00 00 01 1200"),
   plannedEvent("7 21 00 00 01 1200"),
   plannedEvent("1 21 00 00 02 600"),
-  plannedEvent("2 21 00 00 02 600"),
+  plannedEvent("2 01 10 00 02 200"),
   plannedEvent("3 21 00 00 02 600"),
   plannedEvent("4 21 00 00 02 600"),
   plannedEvent("5 21 00 00 02 600"),
@@ -94,13 +95,18 @@ int currentPunpUsed           = 0;      // counter of watering pumps, each water
 
 // Variables for displaying data using the button
 int lcdButtonFlag = 1;
-String dateWaterScheduleLCD;
-String timeWaterScheduleLCD;
+String dateWaterScheduleLCD[2];
+String timeWaterScheduleLCD[2];
+String dateWaterScheduleCSV[2];
+String timeWaterScheduleCSV[2];
 String dateWaterCustomLCD[4];
 String timeWaterCustomLCD[4];
+String dateWaterCustomCSV[4];
+String timeWaterCustomCSV[4];
 bool customWateredCheck     = false;
 bool customWatered[4]       = {false,false,false,false};
 bool wateringStarted[4]     = {false,false,false,false};
+bool wateringSaved[6]       = {true,true,true,true,true,true};
 int wateringStartDay[4]     = {0,0,0,0};
 int wateringStartHour[4]    = {0,0,0,0};
 int wateringStartMinute[4]  = {0,0,0,0};
@@ -136,23 +142,29 @@ void setup() {
   pinMode(wateringLED,OUTPUT);    // watering is ON, read time error (pinLED)
 
   // Water pump relay pin
-  pinMode(waterPumpPin,OUTPUT);
-  digitalWrite(waterPumpPin, HIGH);
-
-  // microSD card reader
-  pinMode(sdCardPin, OUTPUT); //Pin for writing to SD card
-
-  char filename[] = "LOGFILE01.CSV";
-  for (uint8_t i = 0; i < 100; i++) {
-    filename[6] = i/10 + '0';
-    filename[7] = i%10 + '0';
-    if (! SD.exists(filename)) {              // only open a new file if it doesn't exist
-      logfile = SD.open(filename, FILE_WRITE); 
-      break;                                  // leave the loop
-    }
+  for(int i = 0; i < 4; i++) {
+    pinMode(waterPumpPin[i],OUTPUT);
+    digitalWrite(waterPumpPin[i], HIGH);
   }
 
-  logfile.println("Date,Time,Moisture 1,Moisture 2,Moisture 3,Moisture 4,Air Temp (C),Relative Humidity (%),Water Pump 1,Custom Date 1,Duration 1,Water Pump 2,Custom Date 2,Duration 2,Water Pump 3,Custom Date 3,Duration 3,Water Pump 4,Custom Date 4,Duration 4");   //HEADER 
+// microSD card reader
+  Serial.print("Initializing SD card...");
+  pinMode(sdCardPin, OUTPUT); //Pin for writing to SD card
+
+  if (!SD.begin(sdCardPin)) {
+    Serial.println("initialization failed , or card not present");
+  } else {
+    Serial.println("initialization done.");
+  }
+
+  if (SD.exists(filename)) {
+    logfile = SD.open(filename, FILE_WRITE);
+    Serial.println("File open.");
+  } else {
+    Serial.println("File does not exists.");
+  }
+
+  logfile.println("Date,Time,Moisture 1,Moisture 2,Moisture 3,Moisture 4,Air Temp (C),Relative Humidity (%),Custom Date 1,Duration 1,Custom Date 2,Duration 2,Custom Date 3,Duration 3,Custom Date 4,Duration 4, Scheduled watering large, Scheduled watering small");   //HEADER
   
   // Initialize interruptions
   Timer1.initialize(1000000);
@@ -182,8 +194,10 @@ void loop() {
 // Current date and time to display on lcd
   String dateNowLCD = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
   String timeNowLCD = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
+  String dateNowCSV = "20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+  String timeNowCSV = get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
 
-  /*Serial.println("--------------------------------------------");
+  Serial.println("--------------------------------------------");
   Serial.print("yearNow = ");
   Serial.println(yearNow);
   Serial.print("monthNow = ");
@@ -198,7 +212,7 @@ void loop() {
   Serial.println(minuteNow);
   Serial.print("secondNow = ");
   Serial.println(secondNow);
-  delay(5000);*/
+  delay(2000);
 
 // Start custom watering
   if (waterButtonFlag && waterNow){
@@ -214,15 +228,17 @@ void loop() {
         digitalWrite(waterPumpPin[i],LOW);
 
         if(!wateringStarted[i]) {
-          wateringStarted[i]     = true;
-          wateringDuration[i]    = 0;
-          wateringStartDay[i]    = dayNow;
-          wateringStartHour[i]   = hourNow;
-          wateringStartMinute[i] = minuteNow;
-          wateringStartSecond[i] = secondNow;
-          dateWaterCustomLCD[i]  = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
-          timeWaterCustomLCD[i]  = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
-          customWatered[i] = true;
+          wateringStarted[i]      = true;
+          wateringDuration[i]     = 0;
+          wateringStartDay[i]     = dayNow;
+          wateringStartHour[i]    = hourNow;
+          wateringStartMinute[i]  = minuteNow;
+          wateringStartSecond[i]  = secondNow;
+          dateWaterCustomLCD[i]   = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+          timeWaterCustomLCD[i]   = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
+          dateWaterCustomCSV[i]   = "20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+          timeWaterCustomCSV[i]   = get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
+          customWatered[i]        = true;
         }
       }
     }
@@ -242,8 +258,9 @@ void loop() {
         digitalWrite(waterPumpPin[i],HIGH);
 
         if (customWatered[i]) {
-          wateringDuration[i]  = duration(wateringStartDay[i], wateringStartHour[i], wateringStartMinute[i], wateringStartSecond[i]);
-          wateringStarted[i]   = false;
+          wateringDuration[i]   = duration(wateringStartDay[i], wateringStartHour[i], wateringStartMinute[i], wateringStartSecond[i]);
+          wateringStarted[i]    = false;
+          wateringSaved[i]      = false;
         }
       }
     }
@@ -271,7 +288,7 @@ void loop() {
             
 // Watering BEGIN
 
-            if(event.Planter = largePlanter) {
+            if(event.Planter == largePlanter) {
 
               for(byte i = 0; i < 2; i++) {
 
@@ -286,11 +303,17 @@ void loop() {
         
                   digitalWrite(waterPumpPin[i],HIGH);
                   digitalWrite(wateringLED,LOW);
+                  wateringSaved[4] = false;
+
+                  dateWaterScheduleLCD[0] = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+                  timeWaterScheduleLCD[0] = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
+                  dateWaterScheduleCSV[0] = "20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+                  timeWaterScheduleCSV[0] = get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
                 }
               }
             }
 
-            if(event.Planter = smallPlanter) {
+            if(event.Planter == smallPlanter) {
 
               for(byte i = 2; i < 4; i++) {
 
@@ -305,12 +328,15 @@ void loop() {
         
                   digitalWrite(waterPumpPin[i],HIGH);
                   digitalWrite(wateringLED,LOW);
+                  wateringSaved[5] = false;
+
+                  dateWaterScheduleLCD[1] = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+                  timeWaterScheduleLCD[1] = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
+                  dateWaterScheduleCSV[1] = "20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
+                  timeWaterScheduleCSV[1] = get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
                 }
               }
             }
-
-            dateWaterScheduleLCD = "Date: 20" + String(yearNow) + "/" + get2digits(monthNow) + "/" + get2digits(dayNow);
-            timeWaterScheduleLCD = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
             //Serial.println("Watering finished.");
 
             delay(60000);   // Delay not to fall into the same loop (scheduled minute) for the second time.
@@ -334,9 +360,9 @@ void loop() {
   if(minuteNow%10 == 0 && dataSaved == false) {
 
     // Date and time
-    logfile.print(dateNowLCD);
+    logfile.print(dateNowCSV);
     logfile.print(",");
-    logfile.print(timeNowLCD);
+    logfile.print(timeNowCSV);
     logfile.print(",");
 
     // Moisture
@@ -346,40 +372,62 @@ void loop() {
       logfile.print(",");
     }
 
-    // Air temp and relative Humidity
-    if (isnan(humidityValue) || isnan(tempValue)) {
-    
-      tempValue = dht.readTemperature();
-      logfile.print(tempValue);
-      logfile.print(",");
+    // Air temp and relative Humidity    
+    tempValue = dht.readTemperature();
+    logfile.print(tempValue);
+    logfile.print(",");
   
-      humidityValue = dht.readHumidity();
-      logfile.print(humidityValue);
-      logfile.print("%,");
-    }
+    humidityValue = dht.readHumidity();
+    logfile.print(humidityValue);
+    logfile.print("%,");
 
     // Water pumps
     if (customWateredCheck) {
   
       for(int i = 0; i < 4; i++) {
 
-        logfile.print(i);
-        logfile.print(",");
-        logfile.print(dateWaterCustomLCD[i]);
-        logfile.print(" ");
-        logfile.print(timeWaterCustomLCD[i]);
-        logfile.print(",");
-        logfile.print(get2digits(round(wateringDuration[i] / 60)));
-        logfile.print(":");
-        logfile.print(get2digits(wateringDuration[i] % 60));
+        if(wateringSaved[i] == false) {
+          logfile.print(dateWaterCustomCSV[i]);
+          logfile.print(" ");
+          logfile.print(timeWaterCustomCSV[i]);
+          logfile.print(",");
+          logfile.print(get2digits(round(wateringDuration[i] / 60)));
+          logfile.print(":");
+          logfile.print(get2digits(wateringDuration[i] % 60));
+          logfile.print(",");
+          wateringSaved[i] = true;
+        } else {
+          logfile.print(",,");
+        }
       }
+    } else {
+      logfile.print(",,,,,,,,");
     }
 
+  if(wateringSaved[4] == false) {
+    logfile.print(dateWaterScheduleCSV[0]);
+    logfile.print(" ");
+    logfile.print(timeWaterScheduleCSV[0]);
+    logfile.print(",");
+    wateringSaved[4] = true;
+  } else {
+    logfile.print(",");
+  }
 
+  if(wateringSaved[5] == false) {
+    logfile.print(dateWaterScheduleCSV[1]);
+    logfile.print(" ");
+    logfile.print(timeWaterScheduleCSV[1]);
+    logfile.print(",");
+    wateringSaved[5] = true;
+  } else {
+    logfile.print(",");
+  }
     
     dataSaved = true;
     logfile.println();
     logfile.flush();
+    Serial.println("New data saved");
   } else if (minuteNow%10 != 0 && dataSaved == true) {
     
     dataSaved = false;
@@ -486,12 +534,15 @@ void loop() {
   lcd.print("Date and Time");
   delay(2000);
   
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print(dateWaterScheduleLCD);
-  lcd.setCursor(0,1);
-  lcd.print(timeWaterScheduleLCD);
-  delay(3000);
+  for(int i = 0; i < 2; i++) {
+    
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print(dateWaterScheduleLCD[i]);
+    lcd.setCursor(0,1);
+    lcd.print(timeWaterScheduleLCD[i]);
+    delay(3000);
+  }
 
   lcd.clear();
   lcd.noBacklight();
@@ -558,5 +609,4 @@ long duration(int day, int hour, int minute, int second) {
   } else {
     return durationSeconds;
   }
-  
 }
