@@ -36,9 +36,9 @@ float tempValue     = 0.0;
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE); // Initialize DHT sensor for normal 16mhz Arduino
 
-// microSD card reader
+// microSD card reader - PINS for Mega2560 MISO-50, MOSI-51, SCK-52, SS-53
 boolean dataSaved = false;
-int sdCardPin     = 10;
+int sdCardPin     = 53;
 File logfile;
 
 class plannedEvent{
@@ -83,8 +83,7 @@ int waterButtonPin      = 2;              // On/Off pin for custom watering
 int lcdButtonPin        = 3;              // Turn on LCD and display all the necessary data
 int timeErrorLED        = 4;              // LED pin for read time error - RED
 int wateringLED         = 5;              // watering is ON, - BLUE
-int chargingLED         = 6;              // LED pin for charging indicator - GREEN
-int waterPumpPin[4]     = {7,8,9,10};     // Water pumps relays pin
+int waterPumpPin[4]     = {7,8,9,10};     // Water pumps relays pin (must be INPUT PULLUP)
 int selectedPumpPin[4]  = {11,12,13,14};  // Selected water pump for custom watering
 
 // Variables for custom watering using the buttons
@@ -125,6 +124,9 @@ void setup() {
   pinMode(waterButtonPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(waterButtonPin),waterButtonClicked, CHANGE);
   pinMode(wateringLED,OUTPUT);
+  for(int i = 0; i < 4; i++) {
+    pinMode(selectedPumpPin[i],INPUT_PULLUP);
+  }
   
   // Read display on/off button
   pinMode(lcdButtonPin, INPUT_PULLUP);
@@ -182,7 +184,6 @@ void loop() {
   String timeNowLCD = "Time: " + get2digits(hourNow) + ":" + get2digits(minuteNow) + ":" + get2digits(secondNow);
 
   /*Serial.println("--------------------------------------------");
-  Serial.println(tNow);
   Serial.print("yearNow = ");
   Serial.println(yearNow);
   Serial.print("monthNow = ");
@@ -468,7 +469,7 @@ void loop() {
 
       lcd.clear();
       lcd.setCursor(0,0);
-      lcd.print("Duration pump");
+      lcd.print("Duration pump ");
       lcd.print(i);
       lcd.setCursor(0,1);
       lcd.print(get2digits(round(wateringDuration[i] / 60)));
